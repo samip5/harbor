@@ -14,11 +14,18 @@ jobs:
     if: startsWith(github.head_ref, 'renovate/')
     runs-on: ubuntu-latest
     steps:
+      - name: Generate Token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: "${{ secrets.BOT_APP_ID }}"
+          private-key: "${{ secrets.BOT_APP_PRIVATE_KEY }}"
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
           submodules: false
-          token: ${{ secrets.PIN_SUBMODULE_PAT }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Pin harbor submodule to the tag matching version
         run: |
@@ -43,7 +50,7 @@ jobs:
 
           git update-index --add --cacheinfo 160000,"${TARGET_SHA}",harbor
 
-          git config user.name "harbor-ci"
-          git config user.email "ci@users.noreply.github.com"
+          git config user.name "samip5-bot[bot]"
+          git config user.email "118629685+samip5-bot[bot]@users.noreply.github.com"
           git commit -m "chore: pin harbor submodule to ${VERSION}"
           git push origin "HEAD:${{ github.head_ref }}"

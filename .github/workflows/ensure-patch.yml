@@ -76,8 +76,8 @@ jobs:
           jq --arg v "$LATEST" '. + [$v] | unique' patches/index.json > patches/index.json.tmp
           mv patches/index.json.tmp patches/index.json
 
-          git config user.name "harbor-ci"
-          git config user.email "ci@users.noreply.github.com"
+          git config user.name "samip5-bot[bot]"
+          git config user.email "118629685+samip5-bot[bot]@users.noreply.github.com"
           git add "patches/${LATEST}.patch" patches/index.json
           git commit -m "chore: auto-generate patch for ${LATEST} (forward-ported from ${PREV})"
           git push origin HEAD:main
