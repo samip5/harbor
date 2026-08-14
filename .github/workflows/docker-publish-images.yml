@@ -5,6 +5,10 @@ on:
     branches:
       - 'main'
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   docker-base-image:
     runs-on: ubuntu-latest
