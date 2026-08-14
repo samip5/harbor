@@ -1,0 +1,83 @@
+name: Ensure patch
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: ensure-patch
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  ensure-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Forward-port patch for the latest upstream release, if needed
+        run: |
+          set -eu
+
+          LATEST=$(gh api repos/goharbor/harbor/releases/latest --jq .tag_name)
+
+          if [[ ! "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Latest release tag '$LATEST' doesn't look like a stable semver tag, skipping"
+            exit 0
+          fi
+
+          if [ -f "patches/${LATEST}.patch" ]; then
+            echo "patches/${LATEST}.patch already exists, nothing to do"
+            exit 0
+          fi
+
+          PREV=$(ls patches/*.patch | sed -e 's#patches/##' -e 's#\.patch##' | sort -V | tail -1)
+          if [ -z "$PREV" ]; then
+            echo "::error::No existing patch file found to forward-port from"
+            exit 1
+          fi
+
+          echo "Forward-porting patch from ${PREV} to ${LATEST}"
+
+          git clone https://github.com/goharbor/harbor.git scratch
+          cd scratch
+          git checkout "$LATEST"
+
+          set +e
+          git apply --3way --whitespace=nowarn "../patches/${PREV}.patch"
+          APPLY_STATUS=$?
+          set -e
+
+          if [ "$APPLY_STATUS" -ne 0 ]; then
+            CONFLICTS=$(git diff --name-only --diff-filter=U || true)
+            cd ..
+            rm -rf scratch
+
+            TITLE="Patch conflict forward-porting ${PREV} -> ${LATEST}"
+            EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"${TITLE}\" in:title" --json number --jq 'length')
+            if [ "$EXISTING" = "0" ]; then
+              BODY=$(printf 'Automatic forward-port of `patches/%s.patch` onto `%s` failed via `git apply --3way`.\n\nConflicted files:\n```\n%s\n```\n\nThis needs a manually written `patches/%s.patch`. Once added (and `patches/index.json` updated), Renovate will pick up %s automatically.\n' "$PREV" "$LATEST" "$CONFLICTS" "$LATEST" "$LATEST")
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+            fi
+            exit 1
+          fi
+
+          git diff --full-index "$LATEST" > "../patches/${LATEST}.patch"
+          cd ..
+          rm -rf scratch
+
+          jq --arg v "$LATEST" '. + [$v] | unique' patches/index.json > patches/index.json.tmp
+          mv patches/index.json.tmp patches/index.json
+
+          git config user.name "harbor-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add "patches/${LATEST}.patch" patches/index.json
+          git commit -m "chore: auto-generate patch for ${LATEST} (forward-ported from ${PREV})"
+          git push origin HEAD:main

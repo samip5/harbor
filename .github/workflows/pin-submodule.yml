@@ -1,0 +1,49 @@
+name: Pin submodule
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - version
+
+permissions:
+  contents: write
+
+jobs:
+  pin:
+    if: startsWith(github.head_ref, 'renovate/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          submodules: false
+          token: ${{ secrets.PIN_SUBMODULE_PAT }}
+
+      - name: Pin harbor submodule to the tag matching version
+        run: |
+          set -eu
+
+          VERSION=$(cat version)
+
+          TARGET_SHA=$(git ls-remote https://github.com/goharbor/harbor "refs/tags/${VERSION}^{}" | cut -f1)
+          if [ -z "$TARGET_SHA" ]; then
+            TARGET_SHA=$(git ls-remote https://github.com/goharbor/harbor "refs/tags/${VERSION}" | cut -f1)
+          fi
+          if [ -z "$TARGET_SHA" ]; then
+            echo "::error::Could not resolve tag ${VERSION} in goharbor/harbor"
+            exit 1
+          fi
+
+          CURRENT_SHA=$(git rev-parse "HEAD:harbor")
+          if [ "$TARGET_SHA" = "$CURRENT_SHA" ]; then
+            echo "harbor submodule already pinned to ${VERSION} (${TARGET_SHA}), nothing to do"
+            exit 0
+          fi
+
+          git update-index --add --cacheinfo 160000,"${TARGET_SHA}",harbor
+
+          git config user.name "harbor-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git commit -m "chore: pin harbor submodule to ${VERSION}"
+          git push origin "HEAD:${{ github.head_ref }}"

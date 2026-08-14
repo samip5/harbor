@@ -1,0 +1,47 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "customDatasources": {
+    "harborPatches": {
+      "defaultRegistryUrlTemplate": "https://raw.githubusercontent.com/samip5/harbor/main/patches/index.json",
+      "format": "json",
+      "transformTemplates": [
+        "{\"releases\": $map($, function($v){ {\"version\": $v} })}"
+      ]
+    }
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "matchStrings": [
+        "(?<currentValue>\\S+)"
+      ],
+      "depNameTemplate": "goharbor/harbor",
+      "datasourceTemplate": "custom.harborPatches",
+      "versioningTemplate": "semver-coerced",
+      "fileMatch": [
+        "/^version$/"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "matchDepNames": [
+        "goharbor/harbor"
+      ],
+      "matchDatasources": [
+        "custom.harborPatches"
+      ],
+      "schedule": [
+        "before 6am on monday"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false,
+      "commitMessageTopic": "harbor",
+      "commitMessageAction": "bump"
+    }
+  ]
+}

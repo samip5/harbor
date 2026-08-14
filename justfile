@@ -9,7 +9,7 @@ dep:
 
 [working-directory('harbor')]
 patch:
-    curl "https://github.com/goharbor/harbor/compare/{{ VERSION }}...morlay:patch-{{ VERSION }}.patch" | git apply -v
+    git apply -v ../patches/{{ VERSION }}.patch
 
 [working-directory('harbor')]
 reset:
