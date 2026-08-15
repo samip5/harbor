@@ -55,7 +55,7 @@ jobs:
         run: echo "tag=$(cat ../version)"  >> $GITHUB_ENV
 
       - name: Build base image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./harbor
           file: ./harbor/make/photon/${{ matrix.component }}/Dockerfile.base
