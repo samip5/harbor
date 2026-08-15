@@ -1,0 +1,394 @@
+diff --git a/Makefile b/Makefile
+index 3ceab96c43816bc3392ea2add8560a3b0fe59c65..758b369a4bf3b727324906b0858e499ae21d78ee 100644
+--- a/Makefile
++++ b/Makefile
+@@ -168,6 +168,19 @@ GOFMT=gofmt -w
+ GOBUILDIMAGE=golang:1.26.4
+ GOBUILDPATHINCONTAINER=/harbor
+ 
++TARGETARCHS=amd64 arm64
++
++MULTIARCH=false
++# image labels could set by env var IMAGELABELS
++IMAGELABELS?=
++
++ifeq ($(MULTIARCH),true)
++	# when MULTIARCH enabled, must BUILDBIN=true for build multi-arch binaries of deps
++	BUILDBIN=true
++	TARGETARCHS=amd64 arm64
++	DOCKERBUILD=set -eux; $(DOCKERCMD) buildx build --no-cache --pull --push $(foreach arch,${TARGETARCHS},--platform=linux/${arch}) $(foreach label,${IMAGELABELS},--label=${label})
++endif
++
+ # go build
+ PKG_PATH=github.com/goharbor/harbor/src/pkg
+ GITCOMMIT := $(shell git rev-parse --short=8 HEAD)
+@@ -372,29 +385,29 @@ check_environment:
+ compile_core: lint_apis gen_apis
+ 	@echo "compiling binary for core (golang image)..."
+ 	@echo $(GOBUILDPATHINCONTAINER)
+-	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_CORE) $(GOBUILDIMAGE) $(GOIMAGEBUILD_CORE) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_CORE)/$(CORE_BINARYNAME)
++	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_CORE) $(GOBUILDIMAGE) sh -c 'set -eux; $(foreach targetarch,$(TARGETARCHS), GOARCH=$(targetarch) $(GOIMAGEBUILD_CORE) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_CORE)/binary/$(CORE_BINARYNAME)-linux-$(targetarch);)'
+ 	@echo "Done."
+ 
+ compile_jobservice:
+ 	@echo "compiling binary for jobservice (golang image)..."
+-	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_JOBSERVICE) $(GOBUILDIMAGE) $(GOIMAGEBUILD_COMMON) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_JOBSERVICE)/$(JOBSERVICEBINARYNAME)
++	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_JOBSERVICE) $(GOBUILDIMAGE) sh -c 'set -eux; $(foreach targetarch,$(TARGETARCHS), GOARCH=$(targetarch) $(GOIMAGEBUILD_COMMON) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_JOBSERVICE)/binary/$(JOBSERVICEBINARYNAME)-linux-$(targetarch);)'
+ 	@echo "Done."
+ 
+ compile_registryctl:
+ 	@echo "compiling binary for harbor registry controller (golang image)..."
+-	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_REGISTRYCTL) $(GOBUILDIMAGE) $(GOIMAGEBUILD_COMMON) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_REGISTRYCTL)/$(REGISTRYCTLBINARYNAME)
++	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_REGISTRYCTL) $(GOBUILDIMAGE) sh -c 'set -eux; $(foreach targetarch,$(TARGETARCHS), GOARCH=$(targetarch) $(GOIMAGEBUILD_COMMON) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_REGISTRYCTL)/binary/$(REGISTRYCTLBINARYNAME)-linux-$(targetarch);)'
+ 	@echo "Done."
+ 
+ compile_standalone_db_migrator:
+ 	@echo "compiling binary for standalone db migrator (golang image)..."
+-	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_STANDALONE_DB_MIGRATOR) $(GOBUILDIMAGE) $(GOIMAGEBUILD_COMMON) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_STANDALONE_DB_MIGRATOR)/$(STANDALONE_DB_MIGRATOR_BINARYNAME)
++	@$(DOCKERCMD) run --rm -v $(BUILDPATH):$(GOBUILDPATHINCONTAINER) -w $(GOBUILDPATH_STANDALONE_DB_MIGRATOR) $(GOBUILDIMAGE) sh -c 'set -eux; $(foreach targetarch,$(TARGETARCHS),GOARCH=$(targetarch) $(GOIMAGEBUILD_COMMON) -o $(GOBUILDPATHINCONTAINER)/$(GOBUILDMAKEPATH_STANDALONE_DB_MIGRATOR)/binary/$(STANDALONE_DB_MIGRATOR_BINARYNAME)-linux-$(targetarch);)'
+ 	@echo "Done."
+ 
+ compile: check_environment versions_prepare compile_core compile_jobservice compile_registryctl
+ 
+ update_prepare_version:
+ 	@echo "substitute the prepare version tag in prepare file..."
+-	@$(SEDCMDI) -e 's/goharbor\/prepare:.*[[:space:]]\+/goharbor\/prepare:$(VERSIONTAG) prepare /' $(MAKEPATH)/prepare ;
++	@$(SEDCMDI) -e 's/$(IMAGENAMESPACE)\/prepare:.*[[:space:]]\+/$(REGISTRYPROJECTNAME)\/prepare:$(VERSIONTAG) prepare /' $(MAKEPATH)/prepare ;
+ 
+ gen_tls:
+ 	@$(DOCKERCMD) run --rm -v /:/hostfs:z $(IMAGENAMESPACE)/prepare:$(VERSIONTAG) gencert -p /etc/harbor/tls/internal
+@@ -416,6 +429,7 @@ build:
+ 		exit 1; \
+ 	fi
+ 	make -f $(MAKEFILEPATH_PHOTON)/Makefile $(BUILDTARGET) -e DEVFLAG=$(DEVFLAG) -e GOBUILDIMAGE=$(GOBUILDIMAGE) -e NODEBUILDIMAGE=$(NODEBUILDIMAGE) \
++	 -e TARGETARCHS="$(TARGETARCHS)" -e DOCKERBUILD="$(DOCKERBUILD)" \
+ 	 -e REGISTRYVERSION=$(REGISTRYVERSION) -e REGISTRY_SRC_TAG=$(REGISTRY_SRC_TAG)  -e DISTRIBUTION_SRC=$(DISTRIBUTION_SRC)\
+ 	 -e TRIVYVERSION=$(TRIVYVERSION) -e TRIVYADAPTERVERSION=$(TRIVYADAPTERVERSION) \
+ 	 -e VERSIONTAG=$(VERSIONTAG) \
+diff --git a/make/photon/Makefile b/make/photon/Makefile
+index ecef4bed0be3e7e28504c9540598c20fc0bf9748..b14e287f25a642de91560db9ff9b374db6dd819d 100644
+--- a/make/photon/Makefile
++++ b/make/photon/Makefile
+@@ -16,10 +16,12 @@ WGET=$(shell which wget)
+ CURL=$(shell which curl)
+ TIMESTAMP=$(shell date +"%Y%m%d")
+ 
++TARGETARCHS=amd64 arm64
++
+ # docker parameters
+ DOCKERCMD=$(shell which docker)
+-DOCKERBUILD=$(DOCKERCMD) build --no-cache --network=$(DOCKERNETWORK)
+-DOCKERBUILD_WITH_PULL_PARA=$(DOCKERBUILD) --pull=$(PULL_BASE_FROM_DOCKERHUB)
++DOCKERBUILD=$(DOCKERCMD) build --no-cache $(foreach arch,${TARGETARCHS},--platform=linux/${arch}) --network=$(DOCKERNETWORK)
++DOCKERBUILD_WITH_PULL_PARA=$(DOCKERCMD) buildx build --push $(foreach arch,${TARGETARCHS},--platform=linux/${arch})
+ DOCKERRMIMAGE=$(DOCKERCMD) rmi
+ DOCKERIMAGES=$(DOCKERCMD) images
+ IMAGENAMESPACE=goharbor
+@@ -154,7 +156,7 @@ _build_trivy_adapter:
+ 			$(call _extract_archive, $(TRIVY_ADAPTER_DOWNLOAD_URL), $(DOCKERFILEPATH_TRIVY_ADAPTER)/binary/) ; \
+ 		else \
+ 			echo "Building Trivy adapter $(TRIVYADAPTERVERSION) from sources..." ; \
+-			cd $(DOCKERFILEPATH_TRIVY_ADAPTER) && $(DOCKERFILEPATH_TRIVY_ADAPTER)/builder.sh $(TRIVYADAPTERVERSION) $(GOBUILDIMAGE) $(DOCKERNETWORK) && cd - ; \
++			cd $(DOCKERFILEPATH_TRIVY_ADAPTER) && $(DOCKERFILEPATH_TRIVY_ADAPTER)/builder.sh $(TRIVYADAPTERVERSION) $(GOBUILDIMAGE) && cd - ; \
+ 		fi ; \
+ 		echo "Building Trivy adapter container for photon..." ; \
+ 		$(DOCKERBUILD_WITH_PULL_PARA) --build-arg harbor_base_image_version=$(BASEIMAGETAG) \
+@@ -181,7 +183,7 @@ _build_registry:
+ 		cd $(DOCKERFILEPATH_REG) && $(DOCKERFILEPATH_REG)/builder $(REGISTRY_SRC_TAG) $(DISTRIBUTION_SRC) $(GOBUILDIMAGE) $(DOCKERNETWORK) && cd - ; \
+ 	fi
+ 	@echo "building registry container for photon..."
+-	@chmod 655 $(DOCKERFILEPATH_REG)/binary/registry && $(DOCKERBUILD_WITH_PULL_PARA) --build-arg harbor_base_image_version=$(BASEIMAGETAG) --build-arg harbor_base_namespace=$(BASEIMAGENAMESPACE) -f $(DOCKERFILEPATH_REG)/$(DOCKERFILENAME_REG) -t $(DOCKERIMAGENAME_REG):$(VERSIONTAG) .
++	@chmod 655 $(DOCKERFILEPATH_REG)/binary/registry* && $(DOCKERBUILD_WITH_PULL_PARA) --build-arg harbor_base_image_version=$(BASEIMAGETAG) --build-arg harbor_base_namespace=$(BASEIMAGENAMESPACE) -f $(DOCKERFILEPATH_REG)/$(DOCKERFILENAME_REG) -t $(DOCKERIMAGENAME_REG):$(VERSIONTAG) .
+ 	@echo "Done."
+ 
+ _build_registryctl:
+diff --git a/make/photon/core/Dockerfile b/make/photon/core/Dockerfile
+index da561a875b58a1634a486c4332506f1e67725258..80253dfb3c51336208294885e9337a41481d9a7f 100644
+--- a/make/photon/core/Dockerfile
++++ b/make/photon/core/Dockerfile
+@@ -5,7 +5,8 @@ FROM ${harbor_base_namespace}/harbor-core-base:${harbor_base_image_version}
+ HEALTHCHECK CMD curl --fail -s http://localhost:8080/api/v2.0/ping || curl -k --fail -s https://localhost:8443/api/v2.0/ping || exit 1
+ COPY ./make/photon/common/install_cert.sh /harbor/
+ COPY ./make/photon/core/entrypoint.sh /harbor/
+-COPY ./make/photon/core/harbor_core /harbor/
++ARG TARGETARCH
++COPY ./make/photon/core/binary/harbor_core-linux-${TARGETARCH:-amd64} /harbor/harbor_core
+ COPY ./src/core/views /harbor/views
+ COPY ./make/migrations /harbor/migrations
+ COPY ./icons /harbor/icons
+diff --git a/make/photon/exporter/Dockerfile b/make/photon/exporter/Dockerfile
+index a49e78ebc43bc8e54869b320abedfdee52feea58..b558302b25aade7d52a9e1fdd41fc74a6a18873b 100644
+--- a/make/photon/exporter/Dockerfile
++++ b/make/photon/exporter/Dockerfile
+@@ -4,7 +4,7 @@ ARG harbor_base_namespace
+ ARG harbor_version=dev-legacy
+ ARG git_commit=unknown
+ 
+-FROM ${build_image} AS build
++FROM --platform=${BUILDPLATFORM:-linux/amd64} ${build_image} AS build
+ 
+ ARG harbor_version
+ ARG git_commit
+@@ -15,11 +15,14 @@ ENV GOARCH=amd64
+ 
+ COPY src /harbor/src
+ WORKDIR /harbor/src/cmd/exporter
+-RUN go build -ldflags "-w -s -X github.com/goharbor/harbor/src/pkg/version.ReleaseVersion=${harbor_version} -X github.com/goharbor/harbor/src/pkg/version.GitCommit=${git_commit}" -o /out/harbor_exporter
++
++ARG TARGETARCH
++RUN GOARCH=${TARGETARCH:-amd64} go build -ldflags "-w -s -X github.com/goharbor/harbor/src/pkg/version.ReleaseVersion=${harbor_version} -X github.com/goharbor/harbor/src/pkg/version.GitCommit=${git_commit}" -o /out/harbor_exporter-linux-${TARGETARCH:-amd64}
+ 
+ FROM ${harbor_base_namespace}/harbor-exporter-base:${harbor_base_image_version}
+ 
+-COPY --from=build /out/harbor_exporter /harbor/harbor_exporter
++ARG TARGETARCH
++COPY --from=build /out/harbor_exporter-linux-${TARGETARCH:-amd64} /harbor/harbor_exporter
+ COPY ./make/photon/exporter/entrypoint.sh ./make/photon/common/install_cert.sh /harbor/
+ 
+ RUN chown -R harbor:harbor /etc/pki/tls/certs \
+diff --git a/make/photon/jobservice/Dockerfile b/make/photon/jobservice/Dockerfile
+index accd7519dba81667408ce98199ad6564bb1056ee..2354016be39eab241fbd575353805c7e5247c29d 100644
+--- a/make/photon/jobservice/Dockerfile
++++ b/make/photon/jobservice/Dockerfile
+@@ -4,8 +4,9 @@ FROM ${harbor_base_namespace}/harbor-jobservice-base:${harbor_base_image_version
+ 
+ COPY ./make/photon/common/install_cert.sh /harbor/
+ COPY ./make/photon/jobservice/entrypoint.sh /harbor/
+-COPY ./make/photon/jobservice/harbor_jobservice /harbor/
+ 
++ARG TARGETARCH
++COPY ./make/photon/jobservice/binary/harbor_jobservice-linux-${TARGETARCH:-amd64} /harbor/harbor_jobservice
+ 
+ RUN chown -R harbor:harbor /etc/pki/tls/certs \
+     && chown -R harbor:harbor /harbor/ \
+diff --git a/make/photon/log/Dockerfile b/make/photon/log/Dockerfile
+index f147e59c55af3b0fd9a6a79814c34315188e5aa5..230bf22d4657d3560e5e88dadc6daeb0036dcdca 100644
+--- a/make/photon/log/Dockerfile
++++ b/make/photon/log/Dockerfile
+@@ -11,7 +11,7 @@ COPY ./make/photon/log/rsyslog_docker.conf /etc/rsyslog.d/
+ # and copy the customized one to directory "/etc/cron.hourly/" 
+ # to run logrotate hourly
+ RUN rm /etc/cron.daily/logrotate
+-COPY ./make/photon/log/logrotate /etc/cron.hourly/
++COPY ./make/photon/log/logrotate /etc/cron.hourly/logrotate
+ 
+ COPY ./make/photon/log/start.sh /usr/local/bin/
+ RUN chmod +x /usr/local/bin/start.sh /etc/rsyslog.d/ && \
+diff --git a/make/photon/portal/Dockerfile b/make/photon/portal/Dockerfile
+index a94a5f6223526013c115bff6d0dddf050d184a09..14f6097f2ab3cf02aa29fbde41d273911d4c3dd3 100644
+--- a/make/photon/portal/Dockerfile
++++ b/make/photon/portal/Dockerfile
+@@ -1,7 +1,8 @@
+ ARG harbor_base_image_version
+ ARG harbor_base_namespace
+ ARG NODE
+-FROM ${NODE} as nodeportal
++# only need to build once on amd64 host
++FROM --platform=${BUILDPLATFORM:-linux/amd64} ${NODE} as nodeportal
+ 
+ WORKDIR /build_dir
+ 
+diff --git a/make/photon/registry/Dockerfile b/make/photon/registry/Dockerfile
+index f6565ff386e94d5909e08931604a9970560c833e..d48e98db19a832f60a24f02b5ad88723a79df94e 100644
+--- a/make/photon/registry/Dockerfile
++++ b/make/photon/registry/Dockerfile
+@@ -4,7 +4,8 @@ FROM ${harbor_base_namespace}/harbor-registry-base:${harbor_base_image_version}
+ 
+ COPY ./make/photon/common/install_cert.sh /home/harbor
+ COPY ./make/photon/registry/entrypoint.sh /home/harbor
+-COPY ./make/photon/registry/binary/registry /usr/bin/registry_DO_NOT_USE_GC
++ARG TARGETARCH
++COPY ./make/photon/registry/binary/registry-linux-${TARGETARCH:-amd64} /usr/bin/registry_DO_NOT_USE_GC
+ 
+ RUN chown -R harbor:harbor /etc/pki/tls/certs \
+     && chown harbor:harbor /home/harbor/entrypoint.sh && chmod u+x /home/harbor/entrypoint.sh \
+diff --git a/make/photon/registry/Dockerfile.binary b/make/photon/registry/Dockerfile.binary
+index f6e35357a08dd6452aa666f6d9fb4f6be678b741..7f4c89c5b31a2d6e23aecc76746cf0ab8540e8af 100644
+--- a/make/photon/registry/Dockerfile.binary
++++ b/make/photon/registry/Dockerfile.binary
+@@ -8,4 +8,5 @@ ENV GO111MODULE auto
+ WORKDIR $DISTRIBUTION_DIR
+ COPY . $DISTRIBUTION_DIR
+ 
+-RUN CGO_ENABLED=0 make PREFIX=/go clean binaries
++ARG TARGETARCH
++RUN CGO_ENABLED=0 GOARCH=${TARGETARCH:-amd64} make PREFIX=/go clean binaries
+diff --git a/make/photon/registry/builder b/make/photon/registry/builder
+index 9182993b057cf7b0c4003d9c19d95f15e27b9b2a..4d2d17ff21c26d4fc21d1171d107882760dbcb69 100755
+--- a/make/photon/registry/builder
++++ b/make/photon/registry/builder
+@@ -34,14 +34,23 @@ cd $cur
+ 
+ echo 'build the registry binary ...'
+ cp Dockerfile.binary $TEMP
+-docker build --network=$DOCKERNETWORK --build-arg golang_image=$GOBUILDIMAGE -f $TEMP/Dockerfile.binary -t registry-golang-legacy $TEMP
+ 
+-echo 'copy the registry binary to local...'
+-ID=$(docker create registry-golang-legacy)
+-docker cp $ID:/go/src/github.com/docker/distribution/bin/registry binary/registry
++for targetarch in ${TARGETARCHS}; do
++  echo "build the registry $targetarch binary..."
++  docker build \
++    --network=$DOCKERNETWORK \
++    --build-arg golang_image=$GOBUILDIMAGE \
++    --build-arg TARGETARCH=$targetarch \
++    -f $TEMP/Dockerfile.binary -t registry-golang-legacy-$targetarch $TEMP
+ 
+-docker rm -f $ID
+-docker rmi -f registry-golang-legacy
++  echo "copy the registry $targetarch binary to local..."
++  ID=$(docker create registry-golang-legacy-$targetarch)
++  docker cp $ID:/go/src/github.com/docker/distribution/bin/registry binary/registry-linux-$targetarch
++
++
++  docker rm -f $ID
++  docker rmi -f registry-golang-legacy-$targetarch
++done
+ 
+ echo "Build registry binary success, then to build photon image..."
+ cd $cur
+diff --git a/make/photon/registryctl/Dockerfile b/make/photon/registryctl/Dockerfile
+index b4733df90837a37ceef1f1c202bee7e0e99c28cb..0f8d8929fd1ed30410229071cbe0d211a0698bcf 100644
+--- a/make/photon/registryctl/Dockerfile
++++ b/make/photon/registryctl/Dockerfile
+@@ -3,9 +3,11 @@ ARG harbor_base_namespace
+ FROM ${harbor_base_namespace}/harbor-registryctl-base:${harbor_base_image_version}
+ 
+ COPY ./make/photon/common/install_cert.sh /home/harbor
+-COPY ./make/photon/registry/binary/registry /usr/bin/registry_DO_NOT_USE_GC
+ COPY ./make/photon/registryctl/start.sh /home/harbor
+-COPY ./make/photon/registryctl/harbor_registryctl /home/harbor
++
++ARG TARGETARCH
++COPY ./make/photon/registry/binary/registry-linux-${TARGETARCH:-amd64} /usr/bin/registry_DO_NOT_USE_GC
++COPY ./make/photon/registryctl/binary/harbor_registryctl-linux-${TARGETARCH:-amd64} /home/harbor/harbor_registryctl
+ 
+ RUN chown -R harbor:harbor /etc/pki/tls/certs \
+     && chown harbor:harbor /home/harbor/harbor_registryctl && chmod u+x /home/harbor/harbor_registryctl \
+diff --git a/make/photon/standalone-db-migrator/Dockerfile b/make/photon/standalone-db-migrator/Dockerfile
+index 0fc35c8a6eadda2979ec5988eaed220ee96e742c..bd2223f09bb0c6a7efacdf48d875e0e5fdbe3622 100644
+--- a/make/photon/standalone-db-migrator/Dockerfile
++++ b/make/photon/standalone-db-migrator/Dockerfile
+@@ -6,7 +6,9 @@ ENV EXTERNAL_DB 0
+ 
+ RUN mkdir /harbor/
+ COPY ./make/migrations /migrations
+-COPY ./make/photon/standalone-db-migrator/migrate /harbor/
++
++ARG TARGETARCH
++COPY ./make/photon/standalone-db-migrator/binary/migrate-linux-${TARGETARCH:-amd64} /harbor/migrate
+ COPY ./make/photon/standalone-db-migrator/entrypoint.sh /harbor/
+ 
+ RUN chown -R postgres:postgres /harbor/ \
+diff --git a/make/photon/trivy-adapter/Dockerfile b/make/photon/trivy-adapter/Dockerfile
+index 5379c96aa3ae7a2672dbae3bb5a1bf9f6ccb3b9d..a14b7870371476f2f5e12caa72cf37b4da607721 100644
+--- a/make/photon/trivy-adapter/Dockerfile
++++ b/make/photon/trivy-adapter/Dockerfile
+@@ -1,14 +1,33 @@
+ ARG harbor_base_image_version
+ ARG harbor_base_namespace
++
++FROM alpine:3.12 as trivy-bin
++ARG trivy_version
++
++WORKDIR /trivy-bin
++
++RUN set -eux; \
++    \
++    apk add --no-cache curl; \
++    \
++    case $(uname -m) in \
++        x86_64) export TRIVY_DOWNLOAD_URL=https://github.com/aquasecurity/trivy/releases/download/${trivy_version}/trivy_${trivy_version//v/}_Linux-64bit.tar.gz;; \
++        aarch64) export TRIVY_DOWNLOAD_URL=https://github.com/aquasecurity/trivy/releases/download/${trivy_version}/trivy_${trivy_version//v/}_Linux-ARM64.tar.gz;; \
++        *) echo "unsupported architecture"; exit 1 ;; \
++    esac; \
++    curl --connect-timeout 30 -f -k -L ${TRIVY_DOWNLOAD_URL} | tar xvz -C /trivy-bin
++
+ FROM ${harbor_base_namespace}/harbor-trivy-adapter-base:${harbor_base_image_version}
+ 
+ ARG trivy_version
+ 
+ COPY ./make/photon/common/install_cert.sh /home/scanner
+ COPY ./make/photon/trivy-adapter/entrypoint.sh /home/scanner
+-COPY ./make/photon/trivy-adapter/binary/trivy /usr/local/bin/trivy
+-COPY ./make/photon/trivy-adapter/binary/scanner-trivy /home/scanner/bin/scanner-trivy
+ 
++COPY --from=trivy-bin /trivy-bin/trivy /usr/local/bin/trivy
++
++ARG TARGETARCH
++COPY ./make/photon/trivy-adapter/binary/scanner-trivy-linux-${TARGETARCH:-amd64} /home/scanner/bin/scanner-trivy
+ 
+ RUN chown -R scanner:scanner /etc/pki/tls/certs \
+     && chown scanner:scanner /home/scanner/entrypoint.sh && chmod u+x /home/scanner/entrypoint.sh \
+diff --git a/make/photon/trivy-adapter/Dockerfile.binary b/make/photon/trivy-adapter/Dockerfile.binary
+index 560ffd5b707903e0a068a51a357d7e8d5b3c624a..fd83b0df3b2ad0e90a718c859216ab3d1a92eeab 100644
+--- a/make/photon/trivy-adapter/Dockerfile.binary
++++ b/make/photon/trivy-adapter/Dockerfile.binary
+@@ -4,5 +4,8 @@ FROM ${golang_image}
+ ADD .   /go/src/github.com/goharbor/harbor-scanner-trivy/
+ WORKDIR /go/src/github.com/goharbor/harbor-scanner-trivy/
+ 
+-RUN export GOOS=linux GO111MODULE=on CGO_ENABLED=0 && \
+-	go build -o scanner-trivy cmd/scanner-trivy/main.go
++ARG TARGETARCHS
++RUN set -eux; \
++    for targetarch in ${TARGETARCHS}; do \
++        GOOS=linux GOARCH=${targetarch} GO111MODULE=on CGO_ENABLED=0 go build -a -o scanner-trivy-linux-${targetarch} cmd/scanner-trivy/main.go; \
++    done
+diff --git a/make/photon/trivy-adapter/builder.sh b/make/photon/trivy-adapter/builder.sh
+index 138b877f3a16968b1ae8bd5c3ce0be0ea1dd7b73..6cb678e4165668e7e97868cb6c9229328af7ccc0 100755
+--- a/make/photon/trivy-adapter/builder.sh
++++ b/make/photon/trivy-adapter/builder.sh
+@@ -15,19 +15,31 @@ set -e
+ 
+ cd $(dirname $0)
+ cur=$PWD
+-
+ # The temporary directory to clone Trivy adapter source code
+ TEMP=$(mktemp -d ${TMPDIR-/tmp}/trivy-adapter.XXXXXX)
+-git clone https://github.com/goharbor/harbor-scanner-trivy.git $TEMP
+-cd $TEMP; git checkout $VERSION; cd -
++git clone --depth=1 -b $VERSION https://github.com/goharbor/harbor-scanner-trivy.git $TEMP
+ 
+-echo "Building Trivy adapter binary ..."
++echo "Building Trivy adapter binary based on golang:1.23.4..."
+ cp Dockerfile.binary $TEMP
+-docker build --network=$DOCKERNETWORK --build-arg golang_image=$GOBUILDIMAGE -f $TEMP/Dockerfile.binary -t trivy-adapter-golang-legacy $TEMP
++
++
++set -eux;
++
++mkdir -p ${cur}/binary;
++
++echo "build Trivy adapter binary..."
++docker build \
++  --network=$DOCKERNETWORK \
++  --build-arg=golang_image=$GOBUILDIMAGE \
++  --build-arg=TARGETARCHS="${TARGETARCHS}" \
++  -f $TEMP/Dockerfile.binary -t trivy-adapter-golang-legacy $TEMP
+ 
+ echo "Copying Trivy adapter binary from the container to the local directory..."
+ ID=$(docker create trivy-adapter-golang-legacy)
+-docker cp $ID:/go/src/github.com/goharbor/harbor-scanner-trivy/scanner-trivy binary
++
++for targetarch in ${TARGETARCHS}; do
++  docker cp $ID:/go/src/github.com/goharbor/harbor-scanner-trivy/scanner-trivy-linux-${targetarch} ${cur}/binary/scanner-trivy-linux-${targetarch}
++done
+ 
+ docker rm -f $ID
+ docker rmi -f trivy-adapter-golang-legacy
+diff --git a/tools/swagger/Dockerfile b/tools/swagger/Dockerfile
+index 0f826effb645bb85b6447d0221b2bab789ec192d..89dab493f9ef1947629093a1ce3bdc2dbd5e5e57 100644
+--- a/tools/swagger/Dockerfile
++++ b/tools/swagger/Dockerfile
+@@ -2,7 +2,8 @@ ARG GOLANG
+ FROM ${GOLANG}
+ 
+ ARG SWAGGER_VERSION
+-RUN GOBIN=/go/bin go install github.com/go-swagger/go-swagger/cmd/swagger@${SWAGGER_VERSION}
++ARG TARGETARCH
++RUN curl -fsSL -o /usr/bin/swagger https://github.com/go-swagger/go-swagger/releases/download/$SWAGGER_VERSION/swagger_linux_${TARGETARCH:-amd64} && chmod +x /usr/bin/swagger
+ 
+-ENTRYPOINT ["swagger"]
++ENTRYPOINT ["/usr/bin/swagger"]
+ CMD ["--help"]
