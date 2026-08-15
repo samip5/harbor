@@ -116,6 +116,37 @@ index da561a875b58a1634a486c4332506f1e67725258..80253dfb3c51336208294885e9337a41
  COPY ./src/core/views /harbor/views
  COPY ./make/migrations /harbor/migrations
  COPY ./icons /harbor/icons
+diff --git a/make/photon/core/Dockerfile.base b/make/photon/core/Dockerfile.base
+index 7fad8f50f3bb3f1c96b58ce9b712db339226d5d8..17484f61f2be90c8d012a24878145cf01ca9d66e 100644
+--- a/make/photon/core/Dockerfile.base
++++ b/make/photon/core/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y tzdata shadow >> /dev/null \
+     && tdnf clean all \
+diff --git a/make/photon/db/Dockerfile.base b/make/photon/db/Dockerfile.base
+index 5759683cb2e254dff9013f100a9936b7d29751cc..5d055d4b0a2ec7cea5943f11bbb5f566e4511604 100644
+--- a/make/photon/db/Dockerfile.base
++++ b/make/photon/db/Dockerfile.base
+@@ -1,14 +1,14 @@
+ # pg15 and pg18 can't share one libxml2: pg15 needs libxml2.so.2, pg18 needs
+ # libxml2.so.16, and no single libxml2 package provides both. So build pg15
+ # (only used by pg_upgrade) in its own stage and copy it into the pg18 image.
+-FROM goharbor/photon:5.0-legacy AS pg15
++FROM goharbor/photon:5.0 AS pg15
+ 
+ RUN sed -i '/^snapshot/d' /etc/yum.repos.d/photon-snapshot.repo \
+     && tdnf clean all \
+     && tdnf makecache \
+     && tdnf install -y postgresql15-server
+ 
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ ENV PGDATA=/var/lib/postgresql/data
+ 
 diff --git a/make/photon/exporter/Dockerfile b/make/photon/exporter/Dockerfile
 index a49e78ebc43bc8e54869b320abedfdee52feea58..b558302b25aade7d52a9e1fdd41fc74a6a18873b 100644
 --- a/make/photon/exporter/Dockerfile
@@ -146,6 +177,16 @@ index a49e78ebc43bc8e54869b320abedfdee52feea58..b558302b25aade7d52a9e1fdd41fc74a
  COPY ./make/photon/exporter/entrypoint.sh ./make/photon/common/install_cert.sh /harbor/
  
  RUN chown -R harbor:harbor /etc/pki/tls/certs \
+diff --git a/make/photon/exporter/Dockerfile.base b/make/photon/exporter/Dockerfile.base
+index 7fad8f50f3bb3f1c96b58ce9b712db339226d5d8..17484f61f2be90c8d012a24878145cf01ca9d66e 100644
+--- a/make/photon/exporter/Dockerfile.base
++++ b/make/photon/exporter/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y tzdata shadow >> /dev/null \
+     && tdnf clean all \
 diff --git a/make/photon/jobservice/Dockerfile b/make/photon/jobservice/Dockerfile
 index accd7519dba81667408ce98199ad6564bb1056ee..2354016be39eab241fbd575353805c7e5247c29d 100644
 --- a/make/photon/jobservice/Dockerfile
@@ -161,6 +202,16 @@ index accd7519dba81667408ce98199ad6564bb1056ee..2354016be39eab241fbd575353805c7e
  
  RUN chown -R harbor:harbor /etc/pki/tls/certs \
      && chown -R harbor:harbor /harbor/ \
+diff --git a/make/photon/jobservice/Dockerfile.base b/make/photon/jobservice/Dockerfile.base
+index e205da85c30898e70f8ed125c1cc6f32bc31df54..1a27b4264c20470d2f7aea88cd9cc4440ecd9784 100644
+--- a/make/photon/jobservice/Dockerfile.base
++++ b/make/photon/jobservice/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y tzdata shadow >> /dev/null \
+     && tdnf clean all \
 diff --git a/make/photon/log/Dockerfile b/make/photon/log/Dockerfile
 index f147e59c55af3b0fd9a6a79814c34315188e5aa5..230bf22d4657d3560e5e88dadc6daeb0036dcdca 100644
 --- a/make/photon/log/Dockerfile
@@ -174,6 +225,26 @@ index f147e59c55af3b0fd9a6a79814c34315188e5aa5..230bf22d4657d3560e5e88dadc6daeb0
  
  COPY ./make/photon/log/start.sh /usr/local/bin/
  RUN chmod +x /usr/local/bin/start.sh /etc/rsyslog.d/ && \
+diff --git a/make/photon/log/Dockerfile.base b/make/photon/log/Dockerfile.base
+index 4a3bf582340e7b7828e085c980f4854641100af4..b842d237d947bccd1bdfcc455be598dcfcf04348 100644
+--- a/make/photon/log/Dockerfile.base
++++ b/make/photon/log/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y cronie rsyslog logrotate shadow tar gzip sudo >> /dev/null\
+     && mkdir /var/spool/rsyslog \
+diff --git a/make/photon/nginx/Dockerfile.base b/make/photon/nginx/Dockerfile.base
+index 8a699ba7617e43156467f054487a7a4762966662..8dbf7f26c00fe4c2cfcd22e20d0126726efe18c7 100644
+--- a/make/photon/nginx/Dockerfile.base
++++ b/make/photon/nginx/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y nginx shadow >> /dev/null \
+     && tdnf clean all \
 diff --git a/make/photon/portal/Dockerfile b/make/photon/portal/Dockerfile
 index a94a5f6223526013c115bff6d0dddf050d184a09..14f6097f2ab3cf02aa29fbde41d273911d4c3dd3 100644
 --- a/make/photon/portal/Dockerfile
@@ -188,6 +259,26 @@ index a94a5f6223526013c115bff6d0dddf050d184a09..14f6097f2ab3cf02aa29fbde41d27391
  
  WORKDIR /build_dir
  
+diff --git a/make/photon/portal/Dockerfile.base b/make/photon/portal/Dockerfile.base
+index e6c6720ab7e5e903de501df3efbb43f519d31d29..0aabd19441ab87824b9e29d45c4498692b9bef22 100644
+--- a/make/photon/portal/Dockerfile.base
++++ b/make/photon/portal/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y nginx shadow >> /dev/null \
+     && tdnf clean all \
+diff --git a/make/photon/prepare/Dockerfile.base b/make/photon/prepare/Dockerfile.base
+index c5b30acffffa20031d2879d9fb0d983248ec39b3..c509f599126bc8e6d9ab2f0a0dbcf42bef67ec17 100644
+--- a/make/photon/prepare/Dockerfile.base
++++ b/make/photon/prepare/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y python3 python3-pip python3-PyYAML python3-jinja2 && tdnf clean all
+ ARG pip_index_url=https://pypi.org/simple
 diff --git a/make/photon/registry/Dockerfile b/make/photon/registry/Dockerfile
 index f6565ff386e94d5909e08931604a9970560c833e..d48e98db19a832f60a24f02b5ad88723a79df94e 100644
 --- a/make/photon/registry/Dockerfile
@@ -202,6 +293,16 @@ index f6565ff386e94d5909e08931604a9970560c833e..d48e98db19a832f60a24f02b5ad88723
  
  RUN chown -R harbor:harbor /etc/pki/tls/certs \
      && chown harbor:harbor /home/harbor/entrypoint.sh && chmod u+x /home/harbor/entrypoint.sh \
+diff --git a/make/photon/registry/Dockerfile.base b/make/photon/registry/Dockerfile.base
+index 435bcadb89c6cd7bd193b1db395e26f0c384e179..04c30f55d6820822700a2576bfed3e281752d0b9 100644
+--- a/make/photon/registry/Dockerfile.base
++++ b/make/photon/registry/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y shadow >> /dev/null \
+     && tdnf clean all \
 diff --git a/make/photon/registry/Dockerfile.binary b/make/photon/registry/Dockerfile.binary
 index f6e35357a08dd6452aa666f6d9fb4f6be678b741..7f4c89c5b31a2d6e23aecc76746cf0ab8540e8af 100644
 --- a/make/photon/registry/Dockerfile.binary
@@ -265,6 +366,16 @@ index b4733df90837a37ceef1f1c202bee7e0e99c28cb..0f8d8929fd1ed30410229071cbe0d211
  
  RUN chown -R harbor:harbor /etc/pki/tls/certs \
      && chown harbor:harbor /home/harbor/harbor_registryctl && chmod u+x /home/harbor/harbor_registryctl \
+diff --git a/make/photon/registryctl/Dockerfile.base b/make/photon/registryctl/Dockerfile.base
+index 5b89b7ba75c29a9602060b3b6972f8b547a60ce6..69fe61c3bdf683578f242bc39af6fcdf80e5e074 100644
+--- a/make/photon/registryctl/Dockerfile.base
++++ b/make/photon/registryctl/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y shadow >> /dev/null \
+     && tdnf clean all \
 diff --git a/make/photon/standalone-db-migrator/Dockerfile b/make/photon/standalone-db-migrator/Dockerfile
 index 0fc35c8a6eadda2979ec5988eaed220ee96e742c..bd2223f09bb0c6a7efacdf48d875e0e5fdbe3622 100644
 --- a/make/photon/standalone-db-migrator/Dockerfile
@@ -320,6 +431,16 @@ index 5379c96aa3ae7a2672dbae3bb5a1bf9f6ccb3b9d..a14b7870371476f2f5e12caa72cf37b4
  
  RUN chown -R scanner:scanner /etc/pki/tls/certs \
      && chown scanner:scanner /home/scanner/entrypoint.sh && chmod u+x /home/scanner/entrypoint.sh \
+diff --git a/make/photon/trivy-adapter/Dockerfile.base b/make/photon/trivy-adapter/Dockerfile.base
+index 02b30237a6addb9162a24fe4293350c75d8a86ed..6236fdec2de99e5c08fe8487729b4733728d864d 100644
+--- a/make/photon/trivy-adapter/Dockerfile.base
++++ b/make/photon/trivy-adapter/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y rpm shadow >> /dev/null \
+     && tdnf clean all \
 diff --git a/make/photon/trivy-adapter/Dockerfile.binary b/make/photon/trivy-adapter/Dockerfile.binary
 index 560ffd5b707903e0a068a51a357d7e8d5b3c624a..fd83b0df3b2ad0e90a718c859216ab3d1a92eeab 100644
 --- a/make/photon/trivy-adapter/Dockerfile.binary
@@ -377,6 +498,16 @@ index 138b877f3a16968b1ae8bd5c3ce0be0ea1dd7b73..6cb678e4165668e7e97868cb6c922932
  
  docker rm -f $ID
  docker rmi -f trivy-adapter-golang-legacy
+diff --git a/make/photon/valkey/Dockerfile.base b/make/photon/valkey/Dockerfile.base
+index e2e35aea818dec17476aad5ee33f88a5d3b56c95..563209b1fca76d9944f651ea15df59997a42cac2 100644
+--- a/make/photon/valkey/Dockerfile.base
++++ b/make/photon/valkey/Dockerfile.base
+@@ -1,4 +1,4 @@
+-FROM goharbor/photon:5.0-legacy
++FROM goharbor/photon:5.0
+ 
+ RUN tdnf install -y shadow >> /dev/null \
+     && groupadd -g 999 valkey \
 diff --git a/tools/swagger/Dockerfile b/tools/swagger/Dockerfile
 index 0f826effb645bb85b6447d0221b2bab789ec192d..89dab493f9ef1947629093a1ce3bdc2dbd5e5e57 100644
 --- a/tools/swagger/Dockerfile

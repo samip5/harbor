@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   docker-base-image:
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         component:
@@ -27,6 +26,10 @@ jobs:
           - valkey
           - registry
           - registryctl
+        arch:
+          - amd64
+          - arm64
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
 
     defaults:
       run:
@@ -38,7 +41,6 @@ jobs:
         with:
           submodules: true
 
-      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
         with:
           driver: docker-container
@@ -59,16 +61,55 @@ jobs:
         with:
           context: ./harbor
           file: ./harbor/make/photon/${{ matrix.component }}/Dockerfile.base
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ env.tag }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ghcr.io/${{ github.repository }}/harbor-${{ matrix.component }}-base:${{ env.tag }}
+          tags: ghcr.io/${{ github.repository }}/harbor-${{ matrix.component }}-base:${{ env.tag }}-${{ matrix.arch }}
+
+  docker-base-image-merge:
+    needs:
+      - docker-base-image
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component:
+          - trivy-adapter
+          - core
+          - db
+          - exporter
+          - jobservice
+          - log
+          - nginx
+          - portal
+          - prepare
+          - valkey
+          - registry
+          - registryctl
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: prepare
+        run: echo "tag=$(cat version)" >> $GITHUB_ENV
+
+      - name: Merge arch manifests into one multi-arch tag
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ github.repository }}/harbor-${{ matrix.component }}-base:${{ env.tag }} \
+            ghcr.io/${{ github.repository }}/harbor-${{ matrix.component }}-base:${{ env.tag }}-amd64 \
+            ghcr.io/${{ github.repository }}/harbor-${{ matrix.component }}-base:${{ env.tag }}-arm64
 
   docker-image:
     needs:
-      - docker-base-image
+      - docker-base-image-merge
 
     runs-on: ubuntu-latest
 
