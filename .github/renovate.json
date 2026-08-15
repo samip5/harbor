@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "github>samip5/renovate-config",
+    "github>samip5/renovate-config:automerge-github-actions",
   ],
   "customDatasources": {
     "harborPatches": {
