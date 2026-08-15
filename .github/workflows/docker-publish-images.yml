@@ -24,7 +24,7 @@ jobs:
           - nginx
           - portal
           - prepare
-          - redis
+          - valkey
           - registry
           - registryctl
 
@@ -85,7 +85,7 @@ jobs:
           - nginx
           - registryctl
           - trivy_adapter
-          - redis
+          - valkey
           - standalone_db_migrator
           - exporter
 
