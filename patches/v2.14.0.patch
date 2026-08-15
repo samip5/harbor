@@ -1,9 +1,22 @@
 diff --git a/Makefile b/Makefile
-index 4a11da400a042af73cae31483859c49555baf3d1..fdbe14eeff5e0cc77a2a30841cf7cd7fd74f7685 100644
+index 4a11da400a042af73cae31483859c49555baf3d1..25863227ae0f4b53c40c6ed2f18685efe71bed1d 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -154,6 +154,19 @@ GOFMT=gofmt -w
- GOBUILDIMAGE=golang:1.24.6
+@@ -111,7 +111,7 @@ PREPARE_VERSION_NAME=versions
+ 
+ #versions
+ REGISTRYVERSION=v2.8.3-patch-redis
+-TRIVYVERSION=v0.66.0
++TRIVYVERSION=v0.74.0
+ TRIVYADAPTERVERSION=v0.34.0
+ NODEBUILDIMAGE=node:16.18.0
+ 
+@@ -151,9 +151,22 @@ GOINSTALL=$(GOCMD) install
+ GOTEST=$(GOCMD) test
+ GODEP=$(GOTEST) -i
+ GOFMT=gofmt -w
+-GOBUILDIMAGE=golang:1.24.6
++GOBUILDIMAGE=golang:1.25.13
  GOBUILDPATHINCONTAINER=/harbor
  
 +TARGETARCHS=amd64 arm64
